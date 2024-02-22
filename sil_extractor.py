@@ -23,7 +23,10 @@ class Document:
 
     @property
     def ftype(self):
-        return self.name.rsplit(".", 1)[1].upper()
+        try:
+            return self.name.rsplit(".", 1)[1].upper()
+        except IndexError:
+            return "none"
 
     def __eq__(self, other):
         return self.name == other.name
