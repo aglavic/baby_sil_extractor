@@ -138,6 +138,8 @@ def main():
             ("Zipfile", "*.zip"),
         ],
     )
+    if len(fls) == 0:
+        return
     output = []
     for fi in fls:
         root = analyze_zip(fi)
@@ -145,6 +147,8 @@ def main():
     out_file = filedialog.asksaveasfilename(
         title="Sil Extractor - Choose Destination", initialfile="output.xlsx", filetypes=[("Excel", "*.xlsx")]
     )
+    if out_file is None:
+        return
     write_xls(output, out_file)
 
 
