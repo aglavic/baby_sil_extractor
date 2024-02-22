@@ -1,4 +1,4 @@
-<img src="./sil_icon.svg" style="float:right;width:100px;" />
+<img src="./sil_icon.svg" width="200" align="right" />
 
 # Baby Sil Extractor 
 
