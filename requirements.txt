@@ -2,3 +2,4 @@ black
 isort
 XlsxWriter
 pyinstaller
+py7zr

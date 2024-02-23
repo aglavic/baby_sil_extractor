@@ -3,13 +3,16 @@ Main script to run the program.
 """
 
 import os
+import tempfile
 import zipfile
 
 from dataclasses import dataclass
 from datetime import datetime
+from io import BytesIO
 from tkinter import Tk, filedialog
-from typing import List, Self
+from typing import List, Self, Union
 
+import py7zr
 import xlsxwriter
 
 from xlsxwriter.worksheet import Worksheet
@@ -74,10 +77,10 @@ class Folder:
             sf.sort()
 
 
-def analyze_zip(file_name: str):
+def analyze_zip(file_name: Union[str, bytes]):
     ffolder, fname = os.path.split(file_name)
     root = Folder(fname, [], [])
-    if not file_name.lower().endswith(".zip"):
+    if type(file_name) is str and not file_name.lower().endswith(".zip"):
         raise ValueError("File has to be of type zip")
 
     fzi = zipfile.ZipFile(file_name, "r")
@@ -85,8 +88,54 @@ def analyze_zip(file_name: str):
         if info.is_dir():
             continue
         path_splitted = info.filename.split("/")
-        doc = Document(path_splitted[-1], info.file_size, datetime(*info.date_time))
-        root.add_file(path_splitted[:-1], doc)
+        suffix = path_splitted[-1].rsplit(".", 1)[-1]
+        if suffix.lower() == "zip" or suffix.lower() == "7z":
+            zip_data = fzi.read(info)
+            tmp_file = tempfile.NamedTemporaryFile("w+b", suffix="." + suffix.lower(), delete=False)
+            tmp_file.write(zip_data)
+            tmp_file.close()
+            if suffix.lower() == "7z":
+                sz_root = analyze_z7(tmp_file.name)
+            else:
+                sz_root = analyze_zip(tmp_file.name)
+            sz_root.name = path_splitted[-1]
+            os.unlink(tmp_file.name)
+            root.sub_folders.append(sz_root)
+        else:
+            doc = Document(path_splitted[-1], info.file_size, datetime(*info.date_time))
+            root.add_file(path_splitted[:-1], doc)
+    root.sort()
+    return root
+
+
+def analyze_z7(file_name: str):
+    ffolder, fname = os.path.split(file_name)
+    root = Folder(fname, [], [])
+    if not file_name.lower().endswith(".7z"):
+        raise ValueError("File has to be of type 7-zip (.7z)")
+
+    fzi = py7zr.SevenZipFile(file_name, "r")
+    for info in fzi.list():
+        if info.is_directory:
+            continue
+        path_splitted = info.filename.split("/")
+        suffix = path_splitted[-1].rsplit(".", 1)[-1]
+        if suffix.lower() == "zip" or suffix.lower() == "7z":
+            zip_data = fzi.read([info.filename])
+            fzi.reset()
+            tmp_file = tempfile.NamedTemporaryFile("w+b", suffix="." + suffix.lower(), delete=False)
+            tmp_file.write(zip_data[info.filename].read())
+            tmp_file.close()
+            if suffix.lower() == "7z":
+                sz_root = analyze_z7(tmp_file.name)
+            else:
+                sz_root = analyze_zip(tmp_file.name)
+            sz_root.name = path_splitted[-1]
+            os.unlink(tmp_file.name)
+            root.sub_folders.append(sz_root)
+        else:
+            doc = Document(path_splitted[-1], info.uncompressed, info.creationtime)
+            root.add_file(path_splitted[:-1], doc)
     root.sort()
     return root
 
@@ -120,6 +169,7 @@ size_format = None
 def write_xls(data: List[Folder], out_file):
     global date_format, size_format
     wb = xlsxwriter.Workbook(out_file)
+    wb.remove_timezone = True
     date_format = wb.add_format({"num_format": "yyyy-m-d hh:mm"})
     size_format = wb.add_format({"num_format": "#,##0"})
 
@@ -138,14 +188,17 @@ def main():
     fls = filedialog.askopenfilenames(
         title="Sil Extractor - Select Source File",
         filetypes=[
-            ("Zipfile", "*.zip"),
+            ("Zipfile", "*.zip;*.7z"),
         ],
     )
     if len(fls) == 0:
         return
     output = []
     for fi in fls:
-        root = analyze_zip(fi)
+        if fi.lower().endswith("7z"):
+            root = analyze_z7(fi)
+        else:
+            root = analyze_zip(fi)
         output.append(root)
     out_file = filedialog.asksaveasfilename(
         title="Sil Extractor - Choose Destination", initialfile="output.xlsx", filetypes=[("Excel", "*.xlsx")]
